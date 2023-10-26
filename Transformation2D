@@ -1,3 +1,4 @@
+import numpy as np
 class Transformation2D:
     class Translation:
         def __init__(self, img, x: float, y: float, direction: str):
