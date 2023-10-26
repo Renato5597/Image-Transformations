@@ -1,0 +1,353 @@
+class Transformation2D:
+    class Translation:
+        def __init__(self, img, x: float, y: float, direction: str):
+            # x and y only positive values
+            assert x >= 0, f"Translation in axis x of value: {x} is not allowed, must be greater than zero"
+            assert y >= 0, f"Translation in axis y of value: {y} is not allowed, must be greater than zero"
+            # initialization
+            self.img = img / 255
+            self.x = x
+            self.y = y
+            self.direction = direction
+
+        def translated_img(self):
+            # decision of translation direction
+            if self.direction == "down_right":
+                translation_matrix = np.array([[1, 0, self.x], [0, 1, self.y]])
+                height, width, channel = self.img.shape
+                # create canvas image
+                img_translated = np.zeros((height, width, 3))
+                # method to use all the pixels of the image
+                y_t, x_t, z_t = np.indices((height, width))[0].ravel(), np.indices((height, width))[
+                    1].ravel(), np.repeat(1, np.indices((height, width))[0].ravel().shape)
+                # application of translation matrix
+                xtc, ytc = (translation_matrix @ np.row_stack((x_t, y_t, z_t)))
+                # condition to respect image canvas size
+                include = np.logical_and(np.abs(xtc) < width, np.abs(ytc) < height)
+                # select only the pixels that satisfy the above condition
+                img_translated[ytc[include], xtc[include]] = self.img[y_t[include], x_t[include]]
+                return img_translated
+            elif self.direction == "down_left":
+                translation_matrix = np.array([[1, 0, -self.x], [0, 1, self.y]])
+                height, width, channel = self.img.shape
+                img_translated = np.zeros((height, width, 3))
+                y_t, x_t, z_t = np.indices((height, width))[0].ravel(), np.indices((height, width))[
+                    1].ravel(), np.repeat(1, np.indices((height, width))[0].ravel().shape)
+                xtc, ytc = (translation_matrix @ np.row_stack((x_t, y_t, z_t)))
+                include_x = np.logical_and(xtc < np.max(xtc), xtc > 0)
+                include = np.logical_and(include_x, ytc < height)
+                img_translated[ytc[include], xtc[include]] = self.img[y_t[include], x_t[include]]
+                return img_translated
+            elif self.direction == "up_right":
+                translation_matrix = np.array([[1, 0, self.x], [0, 1, -self.y]])
+                height, width, channel = self.img.shape
+                img_translated = np.zeros((height, width, 3))
+                y_t, x_t, z_t = np.indices((height, width))[0].ravel(), np.indices((height, width))[
+                    1].ravel(), np.repeat(1, np.indices((height, width))[0].ravel().shape)
+                xtc, ytc = (translation_matrix @ np.row_stack((x_t, y_t, z_t)))
+                include_y = np.logical_and(ytc < np.max(ytc), ytc > 0)
+                include_x = np.logical_and(xtc > np.min(xtc), xtc < width)
+                include = np.logical_and(include_x, include_y)
+                img_translated[ytc[include], xtc[include]] = self.img[y_t[include], x_t[include]]
+                return img_translated
+            elif self.direction == "up_left":
+                translation_matrix = np.array([[1, 0, -self.x], [0, 1, -self.y]])
+                height, width, channel = self.img.shape
+                img_translated = np.zeros((height, width, 3))
+                y_t, x_t, z_t = np.indices((height, width))[0].ravel(), np.indices((height, width))[
+                    1].ravel(), np.repeat(1, np.indices((height, width))[0].ravel().shape)
+                xtc, ytc = (translation_matrix @ np.row_stack((x_t, y_t, z_t)))
+                include_y = np.logical_and(ytc < np.max(ytc), ytc > 0)
+                include_x = np.logical_and(xtc < np.max(xtc), xtc > 0)
+                include = np.logical_and(include_x, include_y)
+                img_translated[ytc[include], xtc[include]] = self.img[y_t[include], x_t[include]]
+                return img_translated
+
+    class Rotation:
+        def __init__(self, img, degree: float, clockwise: bool):
+
+            assert degree >= 0, f"degree of value {degree} is not allowed, must be positive"
+
+            self.img = img / 255
+            self.degree = degree
+            self.clockwise = clockwise
+
+        def rotation_matrix(self):  # np.accept only radians
+            theta_rad = (self.degree / 180) * np.pi
+            cos, sin = np.cos(theta_rad), np.sin(theta_rad)
+            return np.array([[cos, -sin], [sin, cos]])
+
+        def direction(self):
+            if self.clockwise is False:
+                return self.rotation_matrix()
+            else:
+                theta_rad = (-self.degree / 180) * np.pi
+                cos, sin = np.cos(theta_rad), np.sin(theta_rad)
+                return np.array([[cos, -sin], [sin, cos]])
+
+        def rotated_img(self):
+            height, width, channel = self.img.shape
+            h2, w2 = height // 2, width // 2
+            # imagine the center of my img as (0,0) and the corners with coordinates
+            # upper left(-width/2, height/2), upper right(width/2, height/2 ) and down right(width/2, - height/2)
+            wr2, hr2 = (
+                np.max(np.abs(self.rotation_matrix() @ np.array([[-w2, w2, w2], [h2, h2, -h2]])), axis=1)).astype(
+                np.int32)
+            wr, hr = wr2 * 2, hr2 * 2
+            img_r = np.zeros((hr, wr, 3))  # canvas image
+            yr, xr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel()
+            yrc, xrc = yr - hr2, xr - wr2
+            xc, yc = (self.direction() @ np.row_stack((xrc, yrc))).astype(np.int32)
+            x, y = xc + w2, yc + h2
+            include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+            img_r[yr[include], xr[include]] = self.img[y[include], x[include]]
+            return img_r
+
+    class Roto_Translation:
+        def __init__(self, img, degree: float, clockwise: bool, x: float, y: float, direction: str):
+
+            assert degree >= 0, f"degree of value {degree} is not allowed, must be positive"
+            assert x >= 0, f"Translation in axis x of value: {x} is not allowed, must be greater than zero"
+            assert y >= 0, f"Translation in axis y of value: {y} is not allowed, must be greater than zero"
+
+            self.img = img / 255
+            self.degree = degree
+            self.clockwise = clockwise
+            self.x = x
+            self.y = y
+            self.direction = direction
+
+        def rotation_matrix(self):  # np.accept only radians
+            theta_rad = (self.degree / 180) * np.pi
+            cos, sin = np.cos(theta_rad), np.sin(theta_rad)
+            return np.array([[cos, -sin], [sin, cos]])
+
+        def direction_rt(self):
+            if self.clockwise is False:
+                return self.rotation_matrix()
+            else:
+                theta_rad = (-self.degree / 180) * np.pi
+                cos, sin = np.cos(theta_rad), np.sin(theta_rad)
+                return np.array([[cos, -sin], [sin, cos]])
+
+        def roto_translated_img(self):
+
+            height, width, channel = self.img.shape
+            t = np.array([np.abs(self.x), np.abs(self.y)])
+            h2, w2 = height // 2, width // 2
+            wr2, hr2 = (
+                np.max(np.abs(self.rotation_matrix() @ np.array([[-w2, w2, w2], [h2, h2, -h2]])), axis=1)).astype(
+                np.int32)
+            wr, hr = wr2 * 2, hr2 * 2
+            img_rt = np.zeros((hr, wr, 3))  # new img all black
+            yr, xr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel()
+
+            if self.direction == "up_left":
+                yrc, xrc = yr - hr2 + t[0], xr - wr2 + t[1]
+                xc, yc = (self.direction_rt() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+            elif self.direction == "down_left":
+                yrc, xrc = yr - hr2 - t[0], xr - wr2 + t[1]
+                xc, yc = (self.direction_rt() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+            elif self.direction == "down_right":
+                yrc, xrc = yr - hr2 - t[0], xr - wr2 - t[1]
+                xc, yc = (self.direction_rt() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+            elif self.direction == "up_right":
+                yrc, xrc = yr - hr2 + t[0], xr - wr2 - t[1]
+                xc, yc = (self.direction_rt() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+
+    class Scaled_Rotation:
+        def __init__(self, img, degree: float, clockwise: bool, x: float, y: float, sx: float, sy: float,
+                     direction: str):
+
+            assert degree >= 0, f"degree of value {degree} is not allowed, must be positive"
+            assert x >= 0, f"Translation in axis x of value: {x} is not allowed, must be greater than zero"
+            assert y >= 0, f"Translation in axis y of value: {y} is not allowed, must be greater than zero"
+            assert sx >= 0, f"Scaled img of value: {sx} is not allowed, must be greater than zero"
+            assert sy >= 0, f"Scaled img of value: {sy} is not allowed, must be greater than zero"
+
+            self.img = img / 255
+            self.degree = degree
+            self.clockwise = clockwise
+            self.x = x
+            self.y = y
+            self.sx = sx
+            self.sy = sy
+            self.direction = direction
+
+        def rotation_matrix(self):  # np.accept only radians
+            theta_rad = (self.degree / 180) * np.pi
+            cos, sin = np.abs(self.sx) * np.cos(theta_rad), np.abs(self.sy) * np.sin(theta_rad)
+            return np.array([[cos, -sin], [sin, cos]])
+
+        def direction_sr(self):
+            if self.clockwise is False:
+                return self.rotation_matrix()
+            else:
+                theta_rad = (-self.degree / 180) * np.pi
+                cos, sin = np.abs(self.sx) * np.cos(theta_rad), np.abs(self.sy) * np.sin(theta_rad)
+                return np.array([[cos, -sin], [sin, cos]])
+
+        def scaled_rotated_img(self):
+            height, width, channel = self.img.shape
+            t = np.array([np.abs(self.x), np.abs(self.y)])
+            h2, w2 = height // 2, width // 2
+            wr2, hr2 = (
+                np.max(np.abs(self.rotation_matrix() @ np.array([[-w2, w2, w2], [h2, h2, -h2]])), axis=1)).astype(
+                np.int32)
+            wr, hr = wr2 * 2, hr2 * 2
+            img_rt = np.zeros((hr, wr, 3))  # new img all black
+            yr, xr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel()
+            if self.direction == "up_left":
+                yrc, xrc = yr - hr2 + t[0], xr - wr2 + t[1]
+                xc, yc = (self.direction_sr() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+            elif self.direction == "down_left":
+                yrc, xrc = yr - hr2 - t[0], xr - wr2 + t[1]
+                xc, yc = (self.direction_sr() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+            elif self.direction == "down_right":
+                yrc, xrc = yr - hr2 - t[0], xr - wr2 - t[1]
+                xc, yc = (self.direction_sr() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+            elif self.direction == "up_right":
+                yrc, xrc = yr - hr2 + t[0], xr - wr2 - t[1]
+                xc, yc = (self.direction_sr() @ np.row_stack((xrc, yrc))).astype(np.int32)
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_rt[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_rt
+
+    class Affine:
+        class General_transformation:
+            def __init__(self, img, a00: float, a01: float, a02: float, a10: float, a11: float, a12: float):
+                self.img = img / 255
+                self.a00 = a00
+                self.a01 = a01
+                self.a02 = a02
+                self.a10 = a10
+                self.a11 = a11
+                self.a12 = a12
+
+            def affine_img(self):
+                height, width, channel = self.img.shape
+                h2, w2 = height // 2, width // 2
+                affine_transformation = np.array([[self.a00, self.a01, self.a02], [self.a10, self.a11, self.a12]])
+                wr2, hr2 = (np.max(np.abs(affine_transformation @ np.array([[-w2, w2, w2], [h2, h2, -h2], [1, 1, 1]])),
+                                   axis=1)).astype(np.int32)
+                wr, hr = wr2 * 2, hr2 * 2
+                img_a = np.zeros((hr, wr, 3))  # new img all black
+                yr, xr, zr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel(), np.repeat(1, np.indices(
+                    (hr, wr))[0].ravel().shape)
+                yac, xac = yr - hr2, xr - wr2
+                xc, yc = (affine_transformation @ np.row_stack((xac, yac, zr)))
+                x, y = xc + w2, yc + h2
+                include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                img_a[yr[include], xr[include]] = self.img[y[include], x[include]]
+                return img_a
+
+        class Shear_transformation:
+            def __init__(self, img, degree: float, direction: str):
+
+                assert degree >= 0, f"degree of value {degree} is not allowed, must be positive"
+
+                self.img = img / 255
+                self.degree = degree
+                self.direction = direction
+
+            def tan_rad(self):  # np.accept only radians
+                theta_rad = (self.degree / 180) * np.pi
+                return np.tan(theta_rad)
+
+            def shear_img(self):
+                height, width, channel = self.img.shape
+                h2, w2 = height // 2, width // 2
+                if self.direction == "x":
+                    shear_transformation = np.array([[1, self.tan_rad(), 0], [0, 1, 0]])
+                    wr2, hr2 = (
+                        np.max(np.abs(shear_transformation @ np.array([[-w2, w2, w2], [h2, h2, -h2], [1, 1, 1]])),
+                               axis=1)).astype(np.int32)
+                    wr, hr = wr2 * 2, hr2 * 2
+                    img_a = np.zeros((hr, wr, 3))  # new img all black
+                    yr, xr, zr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel(), \
+                        np.repeat(1, np.indices((hr, wr))[0].ravel().shape)
+                    yac, xac = yr - hr2, xr - wr2
+                    xc, yc = (shear_transformation @ np.row_stack((xac, yac, zr))).astype(np.int32)
+                    x, y = xc + w2, yc + h2
+                    include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                    img_a[yr[include], xr[include]] = self.img[y[include], x[include]]
+                    return img_a
+                elif self.direction == "y":
+                    shear_transformation = np.array([[1, 0, 0], [self.tan_rad(), 1, 0]])
+                    wr2, hr2 = (
+                        np.max(np.abs(shear_transformation @ np.array([[-w2, w2, w2], [h2, h2, -h2], [1, 1, 1]])),
+                               axis=1)).astype(np.int32)
+                    wr, hr = wr2 * 2, hr2 * 2
+                    img_a = np.zeros((hr, wr, 3))  # new img all black
+                    yr, xr, zr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel(),\
+                        np.repeat(1, np.indices((hr, wr))[0].ravel().shape)
+                    yac, xac = yr - hr2, xr - wr2
+                    xc, yc = (shear_transformation @ np.row_stack((xac, yac, zr))).astype(np.int32)
+                    x, y = xc + w2, yc + h2
+                    include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+                    img_a[yr[include], xr[include]] = self.img[y[include], x[include]]
+                    return img_a
+
+    class Projection:
+        def __init__(self, img, a00: float, a01: float, a02: float, a10: float, a11: float, a12: float, a20: float,
+                     a21: float, a22: float):
+            self.img = img / 255
+            self.a00 = a00
+            self.a01 = a01
+            self.a02 = a02
+            self.a10 = a10
+            self.a11 = a11
+            self.a12 = a12
+            self.a20 = a20
+            self.a21 = a21
+            self.a22 = a22
+
+        def projective_img(self):
+            height, width, channel = self.img.shape
+            h2, w2 = height // 2, width // 2
+            projection_transformation = np.array(
+                [[self.a00, self.a01, self.a02], [self.a10, self.a11, self.a12], [self.a20, self.a21, self.a22]])
+            hr2, wr2, zr2 = (
+                np.max(np.abs(projection_transformation @ np.array([[-w2, w2, w2], [h2, h2, -h2], [1, 1, 1]])),
+                       axis=1)).astype(np.int32)
+            wr, hr = wr2 * 2, hr2 * 2
+            img_p = np.zeros((hr, wr, 3))  # new img all black
+            yr, xr, zr = np.indices((hr, wr))[0].ravel(), np.indices((hr, wr))[1].ravel(), np.repeat(1, np.indices(
+                (hr, wr))[0].ravel().shape)
+            yac, xac = yr - hr2, xr - wr2.T
+            xc, yc, zc = (projection_transformation @ np.row_stack((xac, yac, zr)))
+            xc, yc = xc // zc, yc // zc
+            xc, yc = np.row_stack((xc, yc)).astype(np.int32)
+            x, y = xc + w2, yc + h2
+            include = np.logical_and(np.abs(xc) < w2, np.abs(yc) < h2)
+            img_p[yr[include], xr[include]] = self.img[y[include], x[include]]
+            return img_p
